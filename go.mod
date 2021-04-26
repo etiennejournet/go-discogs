@@ -1,4 +1,4 @@
-module github.com/irlndts/go-discogs
+module github.com/etiennejournet/go-discogs
 
 go 1.16
 
