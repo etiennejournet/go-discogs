@@ -1,76 +1,94 @@
 package discogs
 
 import (
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"net/http"
-	"net/url"
+  "encoding/json"
+  "fmt"
+  "io/ioutil"
+  "net/http"
+  "net/url"
 )
 
 const (
-	discogsAPI = "https://api.discogs.com"
+  discogsAPI = "https://api.discogs.com"
 )
 
 // Options is a set of options to use discogs API client
 type Options struct {
-	// Discogs API endpoint (optional).
-	URL string
-	// Currency to use (optional, default is USD).
-	Currency string
-	// UserAgent to to call discogs api with.
-	UserAgent string
-	// Token provided by discogs (optional).
-	Token string
+  // Discogs API endpoint (optional).
+  URL string
+  // Currency to use (optional, default is USD).
+  Currency string
+  // UserAgent to to call discogs api with.
+  UserAgent string
+  // Token provided by discogs (optional).
+  Token string
 }
 
 // Discogs is an interface for making Discogs API requests.
 type Discogs interface {
-	CollectionService
-	DatabaseService
-	MarketPlaceService
-	SearchService
+  CollectionService
+  DatabaseService
+  MarketPlaceService
+  SearchService
+  GetUsername() string
 }
 
 type discogs struct {
-	CollectionService
-	DatabaseService
-	SearchService
-	MarketPlaceService
+  CollectionService
+  DatabaseService
+  SearchService
+  MarketPlaceService
+  username string
 }
 
 var header *http.Header
 
 // New returns a new discogs API client.
 func New(o *Options) (Discogs, error) {
-	header = &http.Header{}
+  header = &http.Header{}
 
-	if o == nil || o.UserAgent == "" {
-		return nil, ErrUserAgentInvalid
-	}
+  if o == nil || o.UserAgent == "" {
+    return nil, ErrUserAgentInvalid
+  }
 
-	header.Add("User-Agent", o.UserAgent)
+  header.Add("User-Agent", o.UserAgent)
 
-	cur, err := currency(o.Currency)
-	if err != nil {
-		return nil, err
-	}
+  cur, err := currency(o.Currency)
+  if err != nil {
+    return nil, err
+  }
 
-	// set token, it's required for some queries like search
-	if o.Token != "" {
-		header.Add("Authorization", "Discogs token="+o.Token)
-	}
+  // set token, it's required for some queries like search
+  if o.Token != "" {
+    header.Add("Authorization", "Discogs token="+o.Token)
+  }
 
-	if o.URL == "" {
-		o.URL = discogsAPI
-	}
+  if o.URL == "" {
+    o.URL = discogsAPI
+  }
 
-	return discogs{
-		newCollectionService(o.URL + "/users"),
-		newDatabaseService(o.URL, cur),
-		newSearchService(o.URL + "/database/search"),
-		newMarketPlaceService(o.URL+"/marketplace", cur),
-	}, nil
+  return discogs{
+    newCollectionService(o.URL + "/users"),
+    newDatabaseService(o.URL, cur),
+    newSearchService(o.URL + "/database/search"),
+    newMarketPlaceService(o.URL+"/marketplace", cur),
+    getUsername(o.URL),
+  }, nil
+}
+
+func getUsername(url string) string {
+  items := make(map[string]interface{})
+  err := http_request(url+"/oauth/identity","GET",nil,&items)
+
+  if err != nil {
+    fmt.Println(err)
+  }
+
+  return items["username"].(string)
+}
+
+func (d discogs) GetUsername() string {
+  return d.username
 }
 
 // currency validates currency for marketplace data.
@@ -116,4 +134,35 @@ func request(path string, params url.Values, resp interface{}) error {
 	}
 
 	return json.Unmarshal(body, &resp)
+}
+
+func http_request(path string, request_method string, params url.Values, resp interface{}) error {
+	r, err := http.NewRequest(request_method, path+"?"+params.Encode(), nil)
+	if err != nil {
+		return err
+	}
+	r.Header = *header
+
+	client := &http.Client{}
+	response, err := client.Do(r)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		switch response.StatusCode {
+		case http.StatusUnauthorized:
+			return ErrUnauthorized
+		default:
+			return fmt.Errorf("unknown error: %s", response.Status)
+		}
+	}
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return err
+	}
+
+  return json.Unmarshal(body, &resp)
 }

@@ -17,6 +17,7 @@ type CollectionService interface {
 	CollectionItemsByRelease(username string, releaseID int) (*CollectionItems, error)
 	// Retrieve metadata about a folder in a user’s collection.
 	Folder(username string, folderID int) (*Folder, error)
+  AddToCollection(username string, folderID int, releaseID int)  error
 }
 
 type collectionService struct {
@@ -133,3 +134,19 @@ func (s *collectionService) CollectionItemsByRelease(username string, releaseID 
 	err := request(s.url+"/"+username+"/collection/releases/"+strconv.Itoa(releaseID), nil, &items)
 	return items, err
 }
+
+func (s *collectionService) AddToCollection(username string, folderID int, releaseID int) error {
+	if username == "" {
+    return ErrInvalidUsername
+	}
+	if releaseID == 0 {
+		return ErrInvalidReleaseID
+	}
+  if folderID == 0 {
+    folderID = 1
+  }
+
+	err := http_request(s.url+"/"+username+"/collection/folders/"+strconv.Itoa(folderID)+"/releases/"+strconv.Itoa(releaseID), "POST", nil, nil)
+  return err
+}
+
